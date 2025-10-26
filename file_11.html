@@ -1,0 +1,41 @@
+### Key Components
+
+#### `fetch_tesla_data.py`
+
+- Fetches data from SEC XBRL API
+- Filters entries by fiscal year and data validity
+- Calculates statistical metrics
+- Generates `data.json` output
+
+**Main Functions:**
+- API request with proper User-Agent header
+- JSON parsing and data extraction
+- Statistical computation (mean, max, min)
+- File output generation
+
+#### `index.html`
+
+**HTML Structure:**
+- Header with company name
+- Statistics grid (3 cards)
+- CIK input field
+- Chart canvas element
+
+**JavaScript Functions:**
+
+- `fetchRevenueData(cik)`: Fetches data from SEC API
+- `processRevenueData(apiData)`: Filters and processes raw API response
+- `updateUI(data)`: Updates all DOM elements with new data
+- `updateChart(chartData)`: Creates/updates Chart.js visualization
+- `loadData(cik)`: Orchestrates data fetching and UI updates
+- `checkQueryParams()`: Handles URL query parameters on load
+
+**Styling:**
+- Gradient background design
+- Responsive grid layout
+- Card-based statistics display
+- Professional color scheme
+
+#### `data.json`
+
+Pre-computed structure:
