@@ -1,0 +1,366 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Tesla, Inc. - Revenue Analysis</title>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: #333;
+            padding: 20px;
+            min-height: 100vh;
+        }
+        
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            background: white;
+            border-radius: 12px;
+            box-shadow: 0 10px 40px rgba(0,0,0,0.2);
+            padding: 40px;
+        }
+        
+        h1 {
+            color: #667eea;
+            margin-bottom: 30px;
+            text-align: center;
+            font-size: 2.5em;
+        }
+        
+        .stats-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+            gap: 20px;
+            margin-bottom: 40px;
+        }
+        
+        .stat-card {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 25px;
+            border-radius: 8px;
+            box-shadow: 0 4px 15px rgba(0,0,0,0.1);
+        }
+        
+        .stat-card h3 {
+            font-size: 0.9em;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            margin-bottom: 10px;
+            opacity: 0.9;
+        }
+        
+        .stat-card .value {
+            font-size: 2em;
+            font-weight: bold;
+            margin-bottom: 5px;
+        }
+        
+        .stat-card .fiscal-year {
+            font-size: 0.9em;
+            opacity: 0.8;
+        }
+        
+        .chart-container {
+            position: relative;
+            height: 400px;
+            margin-top: 30px;
+        }
+        
+        .loading {
+            text-align: center;
+            padding: 20px;
+            font-style: italic;
+            color: #666;
+        }
+        
+        .error {
+            background: #ff4444;
+            color: white;
+            padding: 15px;
+            border-radius: 5px;
+            margin-bottom: 20px;
+        }
+        
+        .cik-input {
+            margin-bottom: 20px;
+            text-align: center;
+        }
+        
+        .cik-input input {
+            padding: 10px 15px;
+            font-size: 1em;
+            border: 2px solid #667eea;
+            border-radius: 5px;
+            width: 300px;
+            margin-right: 10px;
+        }
+        
+        .cik-input button {
+            padding: 10px 25px;
+            font-size: 1em;
+            background: #667eea;
+            color: white;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            transition: background 0.3s;
+        }
+        
+        .cik-input button:hover {
+            background: #5568d3;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1 id="revenue-entity-name">Loading...</h1>
+        
+        <div class="cik-input">
+            <input type="text" id="cik-input" placeholder="Enter CIK (e.g., 0000320193)" />
+            <button onclick="loadDataByCIK()">Load Data</button>
+        </div>
+        
+        <div id="error-message"></div>
+        
+        <div class="stats-grid">
+            <div class="stat-card">
+                <h3>Average Revenue</h3>
+                <div class="value" id="revenue-average">-</div>
+            </div>
+            
+            <div class="stat-card">
+                <h3>Maximum Revenue</h3>
+                <div class="value" id="revenue-max-value">-</div>
+                <div class="fiscal-year">FY <span id="revenue-max-fy">-</span></div>
+            </div>
+            
+            <div class="stat-card">
+                <h3>Minimum Revenue</h3>
+                <div class="value" id="revenue-min-value">-</div>
+                <div class="fiscal-year">FY <span id="revenue-min-fy">-</span></div>
+            </div>
+        </div>
+        
+        <div class="chart-container">
+            <canvas id="revenue-chart"></canvas>
+        </div>
+    </div>
+    
+    <script>
+        let chart = null;
+        
+        function formatCurrency(value) {
+            return '$' + (value / 1000000000).toFixed(2) + 'B';
+        }
+        
+        function showError(message) {
+            const errorDiv = document.getElementById('error-message');
+            errorDiv.innerHTML = `<div class="error">${message}</div>`;
+        }
+        
+        function clearError() {
+            document.getElementById('error-message').innerHTML = '';
+        }
+        
+        async function fetchRevenueData(cik) {
+            const paddedCIK = cik.padStart(10, '0');
+            const url = `https://data.sec.gov/api/xbrl/companyconcept/CIK${paddedCIK}/us-gaap/Revenues.json`;
+            
+            const response = await fetch(url, {
+                headers: {
+                    'User-Agent': 'Revenue Analysis Tool contact@example.com'
+                }
+            });
+            
+            if (!response.ok) {
+                throw new Error(`Failed to fetch data: ${response.status}`);
+            }
+            
+            const data = await response.json();
+            return processRevenueData(data);
+        }
+        
+        function processRevenueData(apiData) {
+            const entityName = apiData.entityName || 'Unknown Company';
+            const usdEntries = apiData.units?.USD || [];
+            
+            // Filter entries where fy >= "2018" and val exists and is numeric
+            const filtered = usdEntries.filter(entry => 
+                entry.fy && 
+                entry.val !== undefined && 
+                typeof entry.val === 'number' &&
+                String(entry.fy) >= "2018"
+            );
+            
+            if (filtered.length === 0) {
+                throw new Error('No revenue data found for fiscal years >= 2018');
+            }
+            
+            // Calculate statistics
+            const values = filtered.map(e => e.val);
+            const average = values.reduce((a, b) => a + b, 0) / values.length;
+            
+            const maxEntry = filtered.reduce((max, entry) => 
+                entry.val > max.val ? entry : max
+            );
+            
+            const minEntry = filtered.reduce((min, entry) => 
+                entry.val < min.val ? entry : min
+            );
+            
+            // Group by fiscal year for chart (take highest value per year if duplicates)
+            const byYear = {};
+            filtered.forEach(entry => {
+                const fy = String(entry.fy);
+                if (!byYear[fy] || entry.val > byYear[fy]) {
+                    byYear[fy] = entry.val;
+                }
+            });
+            
+            const sortedYears = Object.keys(byYear).sort();
+            const chartData = sortedYears.map(year => ({
+                year,
+                value: byYear[year]
+            }));
+            
+            return {
+                entityName,
+                average_revenue: Math.round(average * 100) / 100,
+                max: {
+                    val: maxEntry.val,
+                    fy: String(maxEntry.fy)
+                },
+                min: {
+                    val: minEntry.val,
+                    fy: String(minEntry.fy)
+                },
+                chartData
+            };
+        }
+        
+        function updateUI(data) {
+            // Update title and header
+            document.title = `${data.entityName} - Revenue Analysis`;
+            document.getElementById('revenue-entity-name').textContent = data.entityName;
+            
+            // Update statistics
+            document.getElementById('revenue-average').textContent = formatCurrency(data.average_revenue);
+            document.getElementById('revenue-max-value').textContent = formatCurrency(data.max.val);
+            document.getElementById('revenue-max-fy').textContent = data.max.fy;
+            document.getElementById('revenue-min-value').textContent = formatCurrency(data.min.val);
+            document.getElementById('revenue-min-fy').textContent = data.min.fy;
+            
+            // Update chart
+            updateChart(data.chartData);
+        }
+        
+        function updateChart(chartData) {
+            const ctx = document.getElementById('revenue-chart').getContext('2d');
+            
+            if (chart) {
+                chart.destroy();
+            }
+            
+            chart = new Chart(ctx, {
+                type: 'line',
+                data: {
+                    labels: chartData.map(d => `FY ${d.year}`),
+                    datasets: [{
+                        label: 'Revenue (USD)',
+                        data: chartData.map(d => d.value),
+                        borderColor: '#667eea',
+                        backgroundColor: 'rgba(102, 126, 234, 0.1)',
+                        borderWidth: 3,
+                        fill: true,
+                        tension: 0.4,
+                        pointRadius: 5,
+                        pointBackgroundColor: '#667eea',
+                        pointBorderColor: '#fff',
+                        pointBorderWidth: 2
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: {
+                        legend: {
+                            display: true,
+                            position: 'top'
+                        },
+                        tooltip: {
+                            callbacks: {
+                                label: function(context) {
+                                    return 'Revenue: ' + formatCurrency(context.parsed.y);
+                                }
+                            }
+                        }
+                    },
+                    scales: {
+                        y: {
+                            beginAtZero: true,
+                            ticks: {
+                                callback: function(value) {
+                                    return formatCurrency(value);
+                                }
+                            }
+                        }
+                    }
+                }
+            });
+        }
+        
+        async function loadData(cik = '0001318605') {
+            try {
+                clearError();
+                const data = await fetchRevenueData(cik);
+                updateUI(data);
+            } catch (error) {
+                showError(`Error loading data: ${error.message}`);
+                console.error(error);
+            }
+        }
+        
+        function loadDataByCIK() {
+            const input = document.getElementById('cik-input');
+            const cik = input.value.trim();
+            if (cik) {
+                loadData(cik);
+            }
+        }
+        
+        // Check for CIK query parameter
+        function checkQueryParams() {
+            const urlParams = new URLSearchParams(window.location.search);
+            const cik = urlParams.get('CIK');
+            
+            if (cik) {
+                document.getElementById('cik-input').value = cik;
+                loadData(cik);
+            } else {
+                // Load default Tesla data
+                loadData();
+            }
+        }
+        
+        // Initialize on page load
+        document.addEventListener('DOMContentLoaded', checkQueryParams);
+        
+        // Allow Enter key in input
+        document.getElementById('cik-input').addEventListener('keypress', function(e) {
+            if (e.key === 'Enter') {
+                loadDataByCIK();
+            }
+        });
+    </script>
+</body>
+</html>
